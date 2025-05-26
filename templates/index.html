@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Ghar Elections</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      text-align: center;
+      margin: 50px;
+    }
+    .logo {
+      width: 100px;
+      height: auto;
+      margin-bottom: 10px;
+    }
+    .party-section {
+      margin: 30px 0;
+    }
+    .results {
+      margin-top: 30px;
+      font-size: 18px;
+      white-space: pre-wrap;
+    }
+    button {
+      margin: 10px;
+      padding: 10px 20px;
+      font-size: 16px;
+    }
+    .bold {
+      font-weight: bold;
+    }
+  </style>
+</head>
+<body>
+
+  <img src="{{ url_for('static', filename='images/ashoka.png.jpg') }}" alt="Ashoka Chakra" class="logo">
+  <h2 class="bold">Ghar Sarkar Voting Portal</h2>
+
+  <div class="party-section">
+    <img src="{{ url_for('static', filename='images/bbp_logo.png.jpg') }}" alt="BBP Logo" class="logo">
+    <label class="bold"><input type="radio" name="party" value="BBP"> Bhartiya Bacha Party</label>
+  </div>
+
+  <div class="party-section">
+    <img src="{{ url_for('static', filename='images/rsm_logo.png.jpg') }}" alt="RSM Logo" class="logo">
+    <label class="bold"><input type="radio" name="party" value="RSM"> Rashtriya Siblings Morcha</label>
+  </div>
+
+  <input type="text" id="voterCode" placeholder="Enter your voter code"><br><br>
+  <button id="voteBtn">Submit Vote</button>
+
+  <div id="results" class="results"></div>
+  <div id="timerDisplay" class="bold"></div>
+
+  <script>
+    const voteBtn = document.getElementById("voteBtn");
+    const voterCodeInput = document.getElementById("voterCode");
+    const resultsDiv = document.getElementById("results");
+    const TIMER_DURATION = 10 * 60 * 1000;
+
+    async function fetchGlobalTimerStart() {
+      try {
+        const res = await fetch("/api/timer");
+        const data = await res.json();
+        return parseInt(data.startTime) * 1000 || 0;
+      } catch (err) {
+        console.error("Failed to fetch timer:", err);
+        return 0;
+      }
+    }
+
+    async function setGlobalTimerStart() {
+      try {
+        const res = await fetch("/api/timer", { method: "POST" });
+        if (!res.ok) throw new Error("Failed to start timer");
+        updateTimer();
+        resultsDiv.innerText = "Voting has started!";
+      } catch (err) {
+        alert("Failed to start global timer.");
+      }
+    }
+
+    async function updateTimer() {
+      const start = await fetchGlobalTimerStart();
+      if (!start) {
+        document.getElementById("timerDisplay").innerText = "Voting has not started.";
+        return;
+      }
+
+      const now = Date.now();
+      const diff = now - start;
+
+      if (diff >= TIMER_DURATION) {
+        document.getElementById("timerDisplay").innerText = "Voting closed.";
+        return;
+      }
+
+      const remaining = TIMER_DURATION - diff;
+      const mins = Math.floor(remaining / 60000);
+      const secs = Math.floor((remaining % 60000) / 1000);
+      document.getElementById("timerDisplay").innerText = `Time Remaining: ${mins}m ${secs}s`;
+
+      setTimeout(updateTimer, 1000);
+    }
+
+    async function submitVote() {
+      const voterCode = voterCodeInput.value.trim();
+      const selectedParty = document.querySelector('input[name="party"]:checked');
+
+      if (!voterCode) {
+        alert("Please enter your voter code.");
+        return;
+      }
+
+      if (voterCode === "123456789") {
+        try {
+          const res = await fetch("/api/votes");
+          const data = await res.json();
+          const voteList = Object.entries(data).map(([id, vote]) => `${id} → ${vote}`).join("\n");
+          const winnerRes = await fetch("/api/winner");
+          const winnerData = await winnerRes.json();
+          resultsDiv.innerText = `Voting List:\n${voteList}\n\n🎉 Winner: ${winnerData.winner}`;
+        } catch (err) {
+          resultsDiv.innerText = "Failed to fetch votes.";
+        }
+        return;
+      }
+
+      if (voterCode === "987654321") {
+        try {
+          const res = await fetch("/api/votes", { method: "DELETE" });
+          if (!res.ok) throw new Error("Failed to clear votes");
+          resultsDiv.innerText = "Votes cleared on server. Refresh the page.";
+        } catch (err) {
+          resultsDiv.innerText = "Failed to clear votes.";
+        }
+        return;
+      }
+
+      if (voterCode === "1234567890") {
+        await setGlobalTimerStart();
+        return;
+      }
+
+      const start = await fetchGlobalTimerStart();
+      if (!start || Date.now() - start > TIMER_DURATION) {
+        resultsDiv.innerText = "Voting time is over.";
+        return;
+      }
+
+      if (!selectedParty) {
+        alert("Please select a party to vote for.");
+        return;
+      }
+
+      try {
+        const res = await fetch("/api/votes", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ voterCode, party: selectedParty.value }),
+        });
+
+        const data = await res.json();
+
+        if (!res.ok) {
+          resultsDiv.innerText = data.error || "Failed to vote.";
+          return;
+        }
+
+        resultsDiv.innerText = "Thank you for voting!";
+      } catch (err) {
+        resultsDiv.innerText = "Failed to submit vote.";
+      }
+    }
+
+    voteBtn.addEventListener("click", submitVote);
+    updateTimer();
+  </script>
+</body>
+  </html>
